@@ -67,23 +67,47 @@ Set `MCP_SECRET` in `docker-compose.yml` (or as an environment variable). Every 
 ### Container user
 The container runs as a non-root user (`uid 1000`) for better isolation.
 
-## Debug Mode (VNC)
+## Debug Mode (noVNC — browser)
 
-Set `MODE=debug` in `docker-compose.yml`, then:
+Set `MODE=debug` and optionally `NOVNC_PASSWORD` in `docker-compose.yml`:
+
+```yaml
+environment:
+  - MODE=debug
+  - NOVNC_PASSWORD=mysecret
+```
+
+Then run:
 
 ```bash
 docker compose up --build
 ```
 
-Connect a VNC viewer to `localhost:5900`.
+Open a browser and go to:
+```
+http://localhost:6080/vnc.html
+```
+
+Enter the password when prompted (if `NOVNC_PASSWORD` is set).
+
+## Debug Mode (raw VNC client)
+
+Raw VNC is bound to `127.0.0.1:5900`. Set `VNC_PASSWORD` for authentication.
+
+For remote access, use an SSH tunnel first:
+```bash
+ssh -L 5900:localhost:5900 user@your-server
+```
+Then connect your VNC client to `localhost:5900`.
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `MODE` | `prod` | `prod` = headless, `debug` = Xvfb + VNC |
-| `MCP_SECRET` | _(empty)_ | Auth token required on every tool call. Leave empty to disable auth (trusted network only). |
-| `VNC_PASSWORD` | _(empty)_ | VNC password for debug mode. Leave empty for unauthenticated (localhost only). |
+| `MODE` | `prod` | `prod` = headless, `debug` = Xvfb + VNC + noVNC |
+| `MCP_SECRET` | _(empty)_ | Auth token required on every tool call. Leave empty to disable (trusted network only). |
+| `VNC_PASSWORD` | _(empty)_ | Password for raw VNC client (port 5900). Leave empty for unauthenticated. |
+| `NOVNC_PASSWORD` | _(empty)_ | Password for noVNC browser UI (port 6080). Leave empty for unauthenticated. |
 | `PUPPETEER_EXECUTABLE_PATH` | `/usr/bin/google-chrome` | Path to the Chrome binary (set in Dockerfile) |
 
 ## Project Structure
@@ -111,7 +135,8 @@ chrome-personal-mcp/
 
 | Port | Description |
 |---|---|
-| `127.0.0.1:5900` | VNC server — only active when `MODE=debug`, localhost only |
+| `6080` | noVNC web UI — open `http://localhost:6080/vnc.html` in a browser (debug mode only) |
+| `127.0.0.1:5900` | Raw VNC — localhost only, use SSH tunnel for remote access (debug mode only) |
 
 ## First-time Login
 
