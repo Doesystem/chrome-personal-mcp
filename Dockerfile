@@ -20,9 +20,8 @@ RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd6
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
 
 # ---------- Non-root user ----------
-# Chrome requires --no-sandbox when running as root.
-# Running as a non-root user is safer even with --no-sandbox.
-RUN groupadd -g 1000 appuser && useradd -u 1000 -g appuser -m appuser
+# node:20-bullseye already includes a non-root user "node" (uid 1000).
+# Use it directly instead of creating a new one.
 
 # ---------- App ----------
 WORKDIR /app
@@ -34,12 +33,12 @@ COPY . .
 # ---------- Data volume ----------
 # /data holds the Chrome profile and screenshots.
 # Must be writable by appuser.
-RUN mkdir -p /data && chown -R appuser:appuser /data /app
+RUN mkdir -p /data && chown -R node:node /data /app
 
 # ---------- Entrypoint ----------
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
-USER appuser
+USER node
 
 CMD ["/start.sh"]
