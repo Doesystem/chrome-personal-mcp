@@ -34,5 +34,5 @@ const isDebug = process.env.MODE === 'debug';
 
     await page.screenshot({ path: '/data/last.png' });
 
-    await browser.close();
+    await new Promise(() => {});
 })();
