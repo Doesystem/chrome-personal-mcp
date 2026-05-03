@@ -2,16 +2,11 @@ services:
   chrome-mcp:
     build: .
     container_name: chrome-personal-mcp
-    environment:
-      - MODE=debug            # set to debug to enable Xvfb + VNC + noVNC
-      - MCP_SECRET=           # auth token — checked on every tool call
-      - VNC_PASSWORD=         # x11vnc password (raw VNC port 5900)
-      - TRANSPORT=http        # 'stdio' for AI clients, 'http' for n8n
-      - HTTP_PORT=3000        # port for HTTP transport (used when TRANSPORT=http)
+    env_file: .env
     volumes:
       - ./data:/data
     ports:
-      - "3000:3000"           # MCP HTTP endpoint — for n8n
-      - "6080:6080"           # noVNC web UI — http://localhost:6080/vnc.html
-      - "127.0.0.1:5900:5900" # raw VNC — localhost only
+      - "${HTTP_PORT:-3000}:${HTTP_PORT:-3000}"  # MCP HTTP endpoint
+      - "6080:6080"                               # noVNC (debug mode only)
+      - "127.0.0.1:5900:5900"                     # raw VNC (debug mode only)
     shm_size: '1gb'
