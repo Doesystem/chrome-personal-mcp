@@ -6,36 +6,61 @@ import { z } from 'zod';
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const isDebug = process.env.MODE === 'debug';
-const MCP_SECRET = process.env.MCP_SECRET; // optional auth token — checked on every tool call
+const MCP_SECRET = process.env.MCP_SECRET;
 
 // ─── Browser ──────────────────────────────────────────────────────────────────
 
-const browser = await puppeteer.launch({
-  headless: !isDebug,
-  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
-  userDataDir: '/data/chrome-profile',
-  args: [
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-gpu',
-    '--window-size=1280,800',
-    '--disable-extensions',
-    '--disable-background-networking',
-  ],
-  defaultViewport: null,
-  timeout: 60_000,   // give Chrome more time to start in Docker
-});
+const launchBrowser = async () => {
+  const b = await puppeteer.launch({
+    headless: !isDebug,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+    userDataDir: '/data/chrome-profile',
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--start-maximized',           // open fullscreen
+      '--disable-extensions',
+      '--disable-background-networking',
+    ],
+    defaultViewport: null,
+    timeout: 60_000,
+  });
+  return b;
+};
 
-const page = await browser.newPage();
+// Reuse the first tab that Puppeteer opens instead of creating a second one.
+// This avoids the "2 tabs on startup" issue.
+const getPage = async (b) => {
+  const pages = await b.pages();
+  return pages[0] ?? await b.newPage();
+};
 
-// forward page console logs to stdout for debugging
+let browser = await launchBrowser();
+let page = await getPage(browser);
+
+// Forward page console logs to stderr for debugging
 page.on('console', msg => console.error('[page]', msg.text()));
+
+// Auto-relaunch Chrome if it is closed or crashes — keeps the container alive
+browser.on('disconnected', async () => {
+  console.error('[chrome-mcp] Browser disconnected — relaunching in 3s...');
+  await new Promise(r => setTimeout(r, 3_000));
+  try {
+    browser = await launchBrowser();
+    page = await getPage(browser);
+    page.on('console', msg => console.error('[page]', msg.text()));
+    console.error('[chrome-mcp] Browser relaunched');
+  } catch (e) {
+    console.error('[chrome-mcp] Failed to relaunch browser:', e.message);
+  }
+});
 
 // ─── Auth helper ──────────────────────────────────────────────────────────────
 
 function checkAuth(token) {
-  if (!MCP_SECRET) return; // no secret configured — open access (trusted network only)
+  if (!MCP_SECRET) return;
   if (token !== MCP_SECRET) throw new Error('Unauthorized: invalid MCP_SECRET');
 }
 
@@ -56,7 +81,7 @@ server.tool(
       .optional()
       .default('networkidle2')
       .describe('When to consider navigation complete'),
-    token: z.string().optional().describe('MCP_SECRET auth token (required if server is configured with one)'),
+    token: z.string().optional().describe('MCP_SECRET auth token'),
   },
   async ({ url, wait_until, token }) => {
     checkAuth(token);
@@ -77,7 +102,6 @@ server.tool(
   async ({ full_page, token }) => {
     checkAuth(token);
     const buf = await page.screenshot({ fullPage: full_page, encoding: 'base64' });
-    // also save to disk for easy inspection
     await page.screenshot({ path: '/data/last.png', fullPage: full_page });
     return {
       content: [{
@@ -159,7 +183,7 @@ server.tool(
   }
 );
 
-// current_url — return the current page URL
+// current_url — return the current URL and title
 server.tool(
   'current_url',
   'Get the current URL and title of the browser page',
@@ -177,9 +201,8 @@ server.tool(
 // ─── Debug mode — pause for manual login via VNC ─────────────────────────────
 
 if (isDebug) {
-  console.error('[chrome-mcp] Debug mode: 60s pause for manual actions via VNC...');
-  await new Promise(r => setTimeout(r, 60_000));
-  console.error('[chrome-mcp] Resuming — starting MCP server');
+  console.error('[chrome-mcp] Debug mode: browser open — use VNC to interact');
+  console.error('[chrome-mcp] MCP server starting immediately (no pause)');
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
