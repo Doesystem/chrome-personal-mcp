@@ -5,14 +5,16 @@ A personal Chrome MCP server that runs a persistent Chrome session via Puppeteer
 ## Overview
 
 - Runs Google Chrome in a Docker container with a persistent user profile (login sessions survive restarts)
-- 27 MCP tools covering navigation, input, screenshots, network, console, emulation, performance, and memory
+- 32 MCP tools covering navigation, input, screenshots, network, console, emulation, performance, and memory
 - **prod mode** — headless, no UI
 - **debug mode** — virtual display (Xvfb) + noVNC for real-time Chrome inspection via browser
 - Chrome auto-relaunches if closed or crashed — container stays alive
+- All tool errors are caught and returned as structured responses — never crashes the server
+- Global tool timeout configurable via `TOOL_TIMEOUT_MS`
 
 ## MCP Tools
 
-### Navigation (6)
+### Navigation (7)
 
 | Tool | Description |
 |---|---|
@@ -22,8 +24,9 @@ A personal Chrome MCP server that runs a persistent Chrome session via Puppeteer
 | `select_page` | Switch to a tab by its index |
 | `close_page` | Close a tab by its index |
 | `wait_for` | Wait for specified text to appear on the page |
+| `wait_for_selector` | Wait for an element matching a CSS selector to appear |
 
-### Input (9)
+### Input (10)
 
 | Tool | Description |
 |---|---|
@@ -36,6 +39,7 @@ A personal Chrome MCP server that runs a persistent Chrome session via Puppeteer
 | `drag` | Drag one element onto another |
 | `handle_dialog` | Accept or dismiss a browser dialog (alert, confirm, prompt) |
 | `upload_file` | Upload a file through a file input element |
+| `scroll` | Scroll the page or a specific element (up/down/left/right/top/bottom) |
 
 ### Screenshots & Snapshots (2)
 
@@ -44,12 +48,15 @@ A personal Chrome MCP server that runs a persistent Chrome session via Puppeteer
 | `take_screenshot` | Screenshot the page or a specific element — returns base64 or saves to file |
 | `take_snapshot` | Text snapshot of the page accessibility tree (lightweight alternative to screenshot) |
 
-### Content (2)
+### Content & Cookies (5)
 
 | Tool | Description |
 |---|---|
 | `get_content` | Get the page as plain text or raw HTML |
 | `current_url` | Get the current URL and title of the active tab |
+| `get_cookies` | Get all cookies for the current page |
+| `set_cookies` | Set one or more cookies on the current page |
+| `clear_cookies` | Clear all cookies for the current page |
 
 ### Scripting (1)
 
@@ -99,6 +106,8 @@ A personal Chrome MCP server that runs a persistent Chrome session via Puppeteer
 ## Quick Start
 
 ```bash
+cp .env.example .env
+# edit .env and set MCP_SECRET and other values
 docker compose up --build -d
 docker compose logs -f
 ```
@@ -107,7 +116,7 @@ docker compose logs -f
 
 ### stdio — for AI clients (Claude, Kiro, etc.)
 
-Set `TRANSPORT=stdio` (default). Add to your MCP client config:
+Set `TRANSPORT=stdio` in `.env`. Add to your MCP client config:
 
 ```json
 {
@@ -123,7 +132,13 @@ Set `TRANSPORT=stdio` (default). Add to your MCP client config:
 
 ### HTTP — for n8n
 
-Set `TRANSPORT=http` (default in `docker-compose.yml`). The server listens on port `3000`.
+Set `TRANSPORT=http` in `.env` (default). The server listens on port `3000`.
+
+**Health check:**
+```
+GET http://localhost:3000/health
+→ { "status": "ok", "transport": "http" }
+```
 
 **n8n HTTP Request node:**
 ```
@@ -147,11 +162,18 @@ Body:
 ## Security
 
 ### MCP auth token
-Set `MCP_SECRET` in `docker-compose.yml`. Every tool call must pass a matching `token` parameter. Leave empty only on a fully trusted local machine.
+Set `MCP_SECRET` in `.env`. Every tool call must pass a matching `token` parameter. Leave empty only on a fully trusted local machine.
+
+### Origin whitelist
+Set `ALLOWED_ORIGINS` to restrict which origins can call the HTTP endpoint, e.g.:
+```
+ALLOWED_ORIGINS=http://localhost:5678,https://n8n.example.com
+```
+Leave empty to allow all origins.
 
 ### VNC
 - Raw VNC (port 5900) is bound to `127.0.0.1` only
-- Set `VNC_PASSWORD` to require a password
+- Set `VNC_PASSWORD` in `.env` to require a password
 - For remote access use an SSH tunnel: `ssh -L 5900:localhost:5900 user@host`
 - noVNC (port 6080) should be protected by nginx basic auth when exposed publicly
 
@@ -160,7 +182,7 @@ The entrypoint runs as root only to fix `/data` volume permissions, then drops t
 
 ## Debug Mode (noVNC)
 
-Set `MODE=debug` in `docker-compose.yml`, then:
+Set `MODE=debug` in `.env`, then:
 
 ```bash
 docker compose up --build
@@ -179,26 +201,30 @@ Raw VNC is also available at `localhost:5900` (requires a VNC client).
 | `HTTP_PORT` | `3000` | Port for HTTP transport |
 | `MCP_SECRET` | _(empty)_ | Auth token checked on every tool call |
 | `VNC_PASSWORD` | _(empty)_ | Password for raw VNC (port 5900) |
+| `TOOL_TIMEOUT_MS` | `30000` | Global tool execution timeout in milliseconds |
+| `ALLOWED_ORIGINS` | _(empty)_ | Comma-separated allowed origins for HTTP transport. Empty = allow all |
 | `PUPPETEER_EXECUTABLE_PATH` | `/usr/bin/google-chrome` | Chrome binary path (set in Dockerfile) |
 
 ## Project Structure
 
 ```
 chrome-personal-mcp/
-├── app.js                   # Entry point — config, server, transport
+├── app.js                   # Entry point — config, server, transport, health check
 ├── start.sh                 # Entrypoint script — prod/debug mode selection
 ├── Dockerfile               # Node 20 + Chrome + Xvfb + noVNC
-├── docker-compose.yml       # Service config
+├── docker-compose.yml       # Service config (reads from .env)
 ├── package.json
+├── .env.example             # Config template — copy to .env
+├── .env                     # Local config — gitignored
 ├── src/
-│   ├── browser.js           # Browser launch, relaunch, multi-tab ctx
-│   ├── auth.js              # MCP_SECRET token check
+│   ├── browser.js           # Browser launch, relaunch, hook system, multi-tab ctx
+│   ├── auth.js              # MCP_SECRET check + tool() wrapper (error handling + timeout)
 │   └── tools/
 │       ├── index.js         # Registers all tools — add new tools here
-│       ├── navigate.js      # navigate_page, new_page, list_pages, select_page, close_page, wait_for
-│       ├── input.js         # click, hover, fill, fill_form, type_text, press_key, drag, handle_dialog, upload_file
+│       ├── navigate.js      # navigate_page, new_page, list_pages, select_page, close_page, wait_for, wait_for_selector
+│       ├── input.js         # click, hover, fill, fill_form, type_text, press_key, drag, handle_dialog, upload_file, scroll
 │       ├── screenshot.js    # take_screenshot, take_snapshot
-│       ├── content.js       # get_content, current_url
+│       ├── content.js       # get_content, current_url, get_cookies, set_cookies, clear_cookies
 │       ├── evaluate.js      # evaluate_script
 │       ├── network.js       # list_network_requests, get_network_request
 │       ├── console.js       # list_console_messages, get_console_message
@@ -207,7 +233,9 @@ chrome-personal-mcp/
 │       └── memory.js        # take_memory_snapshot
 └── data/                    # Volume mount (./data on host)
     ├── chrome-profile/      # Persistent Chrome profile (cookies, sessions)
-    └── last.png             # Most recent screenshot
+    ├── last.png             # Most recent screenshot
+    ├── trace.json           # Performance trace output
+    └── heap.heapsnapshot    # Memory heap snapshot output
 ```
 
 ## Volumes
@@ -223,7 +251,7 @@ chrome-personal-mcp/
 
 | Port | Description |
 |---|---|
-| `3000` | MCP HTTP endpoint — for n8n (`TRANSPORT=http`) |
+| `3000` | MCP HTTP endpoint + `GET /health` (`TRANSPORT=http`) |
 | `6080` | noVNC web UI — `http://localhost:6080/vnc.html` (debug mode only) |
 | `127.0.0.1:5900` | Raw VNC — localhost only, SSH tunnel for remote access (debug mode only) |
 
@@ -231,7 +259,7 @@ chrome-personal-mcp/
 
 To log in to a site and persist the session:
 
-1. Set `MODE=debug` in `docker-compose.yml`
+1. Set `MODE=debug` in `.env`
 2. Run `docker compose up --build`
 3. Open `http://localhost:6080/vnc.html` in a browser
 4. Log in through the Chrome window
@@ -243,17 +271,17 @@ To log in to a site and persist the session:
 1. Create `src/tools/my_tool.js`:
 ```js
 import { z } from 'zod';
-import { checkAuth } from '../auth.js';
+import { checkAuth, tool } from '../auth.js';
 
 export function registerMyTool(server, ctx) {
   server.tool('my_tool', 'Description', {
     param: z.string(),
     token: z.string().optional(),
-  }, async ({ param, token }) => {
+  }, tool(async ({ param, token }) => {
     checkAuth(token);
-    // use ctx.page or ctx.browser
-    return { content: [{ type: 'text', text: `result` }] };
-  });
+    // use ctx.page, ctx.browser, ctx.newPage(), ctx.onNewPage()
+    return { content: [{ type: 'text', text: 'result' }] };
+  }));
 }
 ```
 
@@ -263,3 +291,5 @@ import { registerMyTool } from './my_tool.js';
 // inside registerAllTools:
 registerMyTool(server, ctx);
 ```
+
+The `tool()` wrapper automatically handles errors and timeouts — no try/catch needed.
