@@ -6,6 +6,12 @@ set -e
 mkdir -p /data/chrome-profile
 chown -R node:node /data
 
+# Remove Chrome profile lock files left by a previous container.
+# Chrome refuses to start if these exist from a killed/crashed container.
+rm -f /data/chrome-profile/SingletonLock \
+      /data/chrome-profile/SingletonCookie \
+      /data/chrome-profile/SingletonSocket
+
 if [ "$MODE" = "debug" ]; then
   echo "Starting DEBUG mode (Xvfb + VNC + noVNC)..."
 
