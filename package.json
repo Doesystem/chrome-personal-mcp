@@ -1,7 +1,7 @@
 {
   "name": "chrome-personal-mcp",
-  "version": "0.0.1",
-  "description": "Personal Chrome MCP server — runs a persistent Chrome session via Puppeteer, exposes browser actions as MCP tools",
+  "version": "0.1.0",
+  "description": "Personal Chrome MCP server — persistent Chrome session via Puppeteer, exposes browser actions as MCP tools over stdio",
   "type": "module",
   "main": "app.js",
   "scripts": {
@@ -9,6 +9,7 @@
     "dev": "MODE=debug node app.js"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.11.2",
     "puppeteer": "22.15.0"
   },
   "engines": {

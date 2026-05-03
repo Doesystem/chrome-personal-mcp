@@ -1,6 +1,6 @@
 FROM node:20-bullseye
 
-# ---------- Install deps ----------
+# ---------- System deps ----------
 RUN apt-get update && apt-get install -y \
     wget gnupg ca-certificates \
     fonts-liberation libasound2 libatk-bridge2.0-0 \
@@ -12,22 +12,34 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# ---------- Install Chrome ----------
+# ---------- Chrome ----------
 RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
     && apt-get install -y ./google-chrome-stable_current_amd64.deb \
     && rm google-chrome-stable_current_amd64.deb
 
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
-WORKDIR /app
+
+# ---------- Non-root user ----------
+# Chrome requires --no-sandbox when running as root.
+# Running as a non-root user is safer even with --no-sandbox.
+RUN groupadd -g 1000 appuser && useradd -u 1000 -g appuser -m appuser
 
 # ---------- App ----------
+WORKDIR /app
 COPY package*.json ./
 RUN npm install
 
 COPY . .
 
+# ---------- Data volume ----------
+# /data holds the Chrome profile and screenshots.
+# Must be writable by appuser.
+RUN mkdir -p /data && chown -R appuser:appuser /data /app
+
 # ---------- Entrypoint ----------
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
+
+USER appuser
 
 CMD ["/start.sh"]

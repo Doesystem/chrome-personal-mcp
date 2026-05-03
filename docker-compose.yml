@@ -1,11 +1,18 @@
 services:
-  agent:
+  chrome-mcp:
     build: .
     container_name: chrome-personal-mcp
     environment:
-      - MODE=debug    # set to debug to enable VNC
+      - MODE=prod           # set to debug to enable Xvfb + VNC
+      - MCP_SECRET=         # set a secret token to require auth on every tool call
+      - VNC_PASSWORD=       # set a VNC password (debug mode only)
     volumes:
       - ./data:/data
     ports:
-      - "5900:5900"  # VNC — only used when MODE=debug
+      # VNC — only active when MODE=debug.
+      # Bound to 127.0.0.1 so it is not exposed to the network.
+      # Use SSH tunnel for remote access: ssh -L 5900:localhost:5900 user@host
+      - "127.0.0.1:5900:5900"
     shm_size: '1gb'
+    # Run as non-root user for better isolation
+    user: "1000:1000"
