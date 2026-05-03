@@ -3,16 +3,16 @@ services:
     build: .
     container_name: chrome-personal-mcp
     environment:
-      - MODE=prod             # set to debug to enable Xvfb + VNC + noVNC
+      - MODE=debug            # set to debug to enable Xvfb + VNC + noVNC
       - MCP_SECRET=           # auth token required on every MCP tool call
-      - VNC_PASSWORD=         # x11vnc password (debug mode, raw VNC port 5900)
-      - NOVNC_PASSWORD=       # noVNC browser password (debug mode, port 6080)
+      - VNC_PASSWORD=         # x11vnc password (raw VNC port 5900)
+                              # noVNC password is handled by nginx basic auth
     volumes:
       - ./data:/data
     ports:
-      # noVNC web UI — accessible from browser at http://localhost:6080/vnc.html
+      # noVNC web UI — http://localhost:6080/vnc.html (protect with nginx basic auth)
       - "6080:6080"
-      # Raw VNC — bound to localhost only, use SSH tunnel for remote access
+      # Raw VNC — localhost only, use SSH tunnel for remote access
       - "127.0.0.1:5900:5900"
     shm_size: '1gb'
-    user: "1000:1000"  # matches the built-in "node" user in node:20-bullseye
+    user: "1000:1000"  # built-in "node" user in node:20-bullseye

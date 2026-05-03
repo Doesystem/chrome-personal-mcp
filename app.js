@@ -15,13 +15,16 @@ const browser = await puppeteer.launch({
   executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
   userDataDir: '/data/chrome-profile',
   args: [
-    '--no-sandbox',           // required inside Docker (no user namespace)
+    '--no-sandbox',
     '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage', // use /tmp instead of /dev/shm to avoid OOM
+    '--disable-dev-shm-usage',
     '--disable-gpu',
     '--window-size=1280,800',
+    '--disable-extensions',
+    '--disable-background-networking',
   ],
   defaultViewport: null,
+  timeout: 60_000,   // give Chrome more time to start in Docker
 });
 
 const page = await browser.newPage();
