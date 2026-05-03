@@ -8,7 +8,8 @@ const LAUNCH_ARGS = [
   '--disable-dev-shm-usage',
   '--disable-gpu',
   '--start-maximized',
-  '--disable-background-networking',
+  // NOTE: do NOT add --disable-background-networking or automation-detection flags
+  // Google and other sites detect these and block login
 ];
 
 async function launchBrowser() {
@@ -19,6 +20,8 @@ async function launchBrowser() {
     args: LAUNCH_ARGS,
     defaultViewport: null,
     timeout: 60_000,
+    // Disable Puppeteer's built-in automation flags that trigger bot detection
+    ignoreDefaultArgs: ['--enable-automation', '--enable-blink-features=IdleDetection'],
   });
 }
 
@@ -34,6 +37,28 @@ export async function createBrowser() {
 
   async function setupPage(page) {
     page.on('console', msg => console.error('[page]', msg.text()));
+
+    // Hide automation signals that trigger bot detection (e.g. Google login block)
+    await page.evaluateOnNewDocument(() => {
+      // Remove navigator.webdriver flag
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+      // Restore plugins array (headless Chrome has 0 plugins)
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [1, 2, 3, 4, 5], // fake non-empty plugins
+      });
+
+      // Restore languages
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['en-US', 'en'],
+      });
+
+      // Fix chrome object missing in headless
+      if (!window.chrome) {
+        window.chrome = { runtime: {} };
+      }
+    });
+
     for (const hook of newPageHooks) {
       await hook(page).catch(e => console.error('[browser] page hook error:', e.message));
     }
