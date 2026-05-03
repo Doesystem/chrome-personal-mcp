@@ -1,18 +1,17 @@
 import { z } from 'zod';
-import { checkAuth } from '../auth.js';
+import { checkAuth, tool } from '../auth.js';
 
 export function registerEvaluate(server, ctx) {
 
-  // evaluate_script — run a JS function in the page
   server.tool(
     'evaluate_script',
     'Execute a JavaScript function in the browser page context and return the JSON result',
     {
-      function: z.string().describe('A JS function declaration, e.g. "() => document.title" or "async () => { return await fetch(...) }"'),
+      function: z.string().describe('A JS function declaration, e.g. "() => document.title"'),
       args: z.array(z.unknown()).optional().describe('Arguments to pass to the function'),
       token: z.string().optional(),
     },
-    async ({ function: fn, args, token }) => {
+    tool(async ({ function: fn, args, token }) => {
       checkAuth(token);
       // eslint-disable-next-line no-new-func
       const result = await ctx.page.evaluate(
@@ -20,6 +19,6 @@ export function registerEvaluate(server, ctx) {
         ...(args ?? [])
       );
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
-    }
+    })
   );
 }

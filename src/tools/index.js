@@ -10,10 +10,10 @@ import { registerPerformance } from './performance.js';
 import { registerMemory }      from './memory.js';
 
 export function registerAllTools(server, ctx) {
-  registerNavigate(server, ctx);    // navigate_page, new_page, list_pages, select_page, close_page, wait_for
-  registerInput(server, ctx);       // click, hover, fill, fill_form, type_text, press_key, drag, handle_dialog, upload_file
+  registerNavigate(server, ctx);    // navigate_page, new_page, list_pages, select_page, close_page, wait_for, wait_for_selector
+  registerInput(server, ctx);       // click, hover, fill, fill_form, type_text, press_key, drag, handle_dialog, upload_file, scroll
   registerScreenshot(server, ctx);  // take_screenshot, take_snapshot
-  registerContent(server, ctx);     // get_content, current_url
+  registerContent(server, ctx);     // get_content, current_url, get_cookies, set_cookies, clear_cookies
   registerEvaluate(server, ctx);    // evaluate_script
   registerNetwork(server, ctx);     // list_network_requests, get_network_request
   registerConsole(server, ctx);     // list_console_messages, get_console_message

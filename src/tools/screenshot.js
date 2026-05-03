@@ -1,9 +1,8 @@
 import { z } from 'zod';
-import { checkAuth } from '../auth.js';
+import { checkAuth, tool } from '../auth.js';
 
 export function registerScreenshot(server, ctx) {
 
-  // take_screenshot
   server.tool(
     'take_screenshot',
     'Take a screenshot of the current page or a specific element',
@@ -15,9 +14,8 @@ export function registerScreenshot(server, ctx) {
       file_path: z.string().optional().describe('Save to this path instead of returning inline'),
       token: z.string().optional(),
     },
-    async ({ selector, full_page, format, quality, file_path, token }) => {
+    tool(async ({ selector, full_page, format, quality, file_path, token }) => {
       checkAuth(token);
-
       const opts = {
         encoding: file_path ? undefined : 'base64',
         type: format,
@@ -32,20 +30,16 @@ export function registerScreenshot(server, ctx) {
         buf = await el.screenshot(opts);
       } else {
         buf = await ctx.page.screenshot(opts);
-        // always save a copy to /data/last.png for easy inspection
         await ctx.page.screenshot({ path: '/data/last.png', fullPage: full_page });
       }
 
       if (file_path) {
         return { content: [{ type: 'text', text: `Screenshot saved to: ${file_path}` }] };
       }
-      return {
-        content: [{ type: 'image', data: buf, mimeType: `image/${format}` }],
-      };
-    }
+      return { content: [{ type: 'image', data: buf, mimeType: `image/${format}` }] };
+    })
   );
 
-  // take_snapshot — a11y tree as text (lightweight alternative to screenshot)
   server.tool(
     'take_snapshot',
     'Take a text snapshot of the page accessibility tree — lists interactive elements with CSS selectors',
@@ -53,14 +47,17 @@ export function registerScreenshot(server, ctx) {
       verbose: z.boolean().optional().default(false).describe('Include all a11y properties'),
       token: z.string().optional(),
     },
-    async ({ verbose, token }) => {
+    tool(async ({ verbose, token }) => {
       checkAuth(token);
       const snapshot = await ctx.page.evaluate((verbose) => {
         const walk = (el, depth = 0) => {
           const tag = el.tagName?.toLowerCase() ?? '';
           const role = el.getAttribute?.('role') ?? '';
-          const label = el.getAttribute?.('aria-label') ?? el.getAttribute?.('placeholder') ?? el.innerText?.slice(0, 60) ?? '';
-          const id = el.id ? `#${el.id}` : '';
+          const label = el.getAttribute?.('aria-label')
+            ?? el.getAttribute?.('placeholder')
+            ?? el.innerText?.slice(0, 60)
+            ?? '';
+          const id  = el.id ? `#${el.id}` : '';
           const cls = el.className && typeof el.className === 'string'
             ? '.' + el.className.trim().split(/\s+/).join('.')
             : '';
@@ -76,6 +73,6 @@ export function registerScreenshot(server, ctx) {
         return walk(document.body);
       }, verbose);
       return { content: [{ type: 'text', text: snapshot }] };
-    }
+    })
   );
 }

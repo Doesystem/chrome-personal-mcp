@@ -1,23 +1,19 @@
 import { z } from 'zod';
-import { checkAuth } from '../auth.js';
+import { checkAuth, tool } from '../auth.js';
 import fs from 'fs';
 
 let activeTraceClient = null;
 
 export function registerPerformance(server, ctx) {
 
-  // performance_start_trace
   server.tool(
     'performance_start_trace',
     'Start a performance trace on the current page',
     {
-      reload: z.boolean().optional().default(false)
-        .describe('Reload the page after starting the trace'),
-      file_path: z.string().optional()
-        .describe('Path to save raw trace JSON, e.g. /data/trace.json'),
+      reload: z.boolean().optional().default(false).describe('Reload the page after starting the trace'),
       token: z.string().optional(),
     },
-    async ({ reload, file_path, token }) => {
+    tool(async ({ reload, token }) => {
       checkAuth(token);
       if (activeTraceClient) throw new Error('A trace is already running — stop it first');
 
@@ -37,21 +33,19 @@ export function registerPerformance(server, ctx) {
       });
 
       if (reload) await ctx.page.reload({ waitUntil: 'networkidle2' });
-
       return { content: [{ type: 'text', text: `Trace started${reload ? ' (page reloaded)' : ''}` }] };
-    }
+    })
   );
 
-  // performance_stop_trace
   server.tool(
     'performance_stop_trace',
-    'Stop the active performance trace and return a summary',
+    'Stop the active performance trace and save to a file',
     {
-      file_path: z.string().optional()
-        .describe('Path to save raw trace JSON, e.g. /data/trace.json'),
+      file_path: z.string().optional().default('/data/trace.json')
+        .describe('Path to save raw trace JSON'),
       token: z.string().optional(),
     },
-    async ({ file_path, token }) => {
+    tool(async ({ file_path, token }) => {
       checkAuth(token);
       if (!activeTraceClient) throw new Error('No active trace — start one first');
 
@@ -64,49 +58,28 @@ export function registerPerformance(server, ctx) {
 
       activeTraceClient = null;
 
-      const json = JSON.stringify({ traceEvents: traceData }, null, 2);
-      const savePath = file_path ?? '/data/trace.json';
-      fs.writeFileSync(savePath, json);
+      fs.writeFileSync(file_path, JSON.stringify({ traceEvents: traceData }, null, 2));
 
-      // Basic summary: count event categories
       const categories = {};
-      for (const e of traceData) {
-        categories[e.cat] = (categories[e.cat] ?? 0) + 1;
-      }
+      for (const e of traceData) categories[e.cat] = (categories[e.cat] ?? 0) + 1;
       const summary = Object.entries(categories)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
-        .map(([cat, count]) => `  ${cat}: ${count} events`)
-        .join('\n');
+        .sort((a, b) => b[1] - a[1]).slice(0, 10)
+        .map(([cat, count]) => `  ${cat}: ${count} events`).join('\n');
 
-      return { content: [{ type: 'text', text: `Trace saved to: ${savePath}\n\nTop event categories:\n${summary}` }] };
-    }
+      return { content: [{ type: 'text', text: `Trace saved to: ${file_path}\n\nTop categories:\n${summary}` }] };
+    })
   );
 
-  // performance_analyze_insight — basic metrics from the page
   server.tool(
     'performance_analyze_insight',
-    'Get performance metrics for the current page (LCP, FCP, CLS, TTFB)',
-    {
-      token: z.string().optional(),
-    },
-    async ({ token }) => {
+    'Get performance metrics for the current page (TTFB, FCP, DOMContentLoaded, Load)',
+    { token: z.string().optional() },
+    tool(async ({ token }) => {
       checkAuth(token);
       const metrics = await ctx.page.evaluate(() => {
         const nav = performance.getEntriesByType('navigation')[0];
         const paint = performance.getEntriesByType('paint');
         const fcp = paint.find(p => p.name === 'first-contentful-paint')?.startTime ?? null;
-        const lcp = (() => {
-          try {
-            return new Promise(resolve => {
-              new PerformanceObserver(list => {
-                const entries = list.getEntries();
-                resolve(entries[entries.length - 1]?.startTime ?? null);
-              }).observe({ type: 'largest-contentful-paint', buffered: true });
-              setTimeout(() => resolve(null), 1000);
-            });
-          } catch { return null; }
-        })();
         return {
           ttfb: nav ? nav.responseStart - nav.requestStart : null,
           fcp,
@@ -115,15 +88,15 @@ export function registerPerformance(server, ctx) {
         };
       });
 
-      const fmt = (v) => v != null ? `${Math.round(v)}ms` : 'N/A';
+      const fmt = v => v != null ? `${Math.round(v)}ms` : 'N/A';
       const text = [
-        `TTFB:              ${fmt(metrics.ttfb)}`,
-        `FCP:               ${fmt(metrics.fcp)}`,
-        `DOMContentLoaded:  ${fmt(metrics.domContentLoaded)}`,
-        `Load:              ${fmt(metrics.loadTime)}`,
+        `TTFB:             ${fmt(metrics.ttfb)}`,
+        `FCP:              ${fmt(metrics.fcp)}`,
+        `DOMContentLoaded: ${fmt(metrics.domContentLoaded)}`,
+        `Load:             ${fmt(metrics.loadTime)}`,
       ].join('\n');
 
       return { content: [{ type: 'text', text }] };
-    }
+    })
   );
 }

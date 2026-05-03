@@ -1,26 +1,20 @@
 import { z } from 'zod';
-import { checkAuth } from '../auth.js';
+import { checkAuth, tool } from '../auth.js';
 
 export function registerEmulation(server, ctx) {
 
-  // emulate — color scheme, viewport, user agent, network throttling
   server.tool(
     'emulate',
     'Emulate device features: color scheme, viewport, user agent, network conditions, CPU throttling',
     {
-      color_scheme: z.enum(['dark', 'light', 'auto']).optional()
-        .describe('"auto" resets to default'),
-      viewport: z.string().optional()
-        .describe('Format: "<width>x<height>" e.g. "375x812" for iPhone'),
-      user_agent: z.string().optional()
-        .describe('User agent string. Empty string resets to default.'),
-      network_conditions: z.enum(['Offline', 'Slow 3G', 'Fast 3G', 'Slow 4G', 'Fast 4G']).optional()
-        .describe('Throttle network. Omit to disable throttling.'),
-      cpu_throttling_rate: z.number().optional()
-        .describe('CPU slowdown factor. 1 = no throttling.'),
+      color_scheme: z.enum(['dark', 'light', 'auto']).optional(),
+      viewport: z.string().optional().describe('Format: "<width>x<height>" e.g. "375x812"'),
+      user_agent: z.string().optional().describe('Empty string resets to default'),
+      network_conditions: z.enum(['Offline', 'Slow 3G', 'Fast 3G', 'Slow 4G', 'Fast 4G']).optional(),
+      cpu_throttling_rate: z.number().optional().describe('CPU slowdown factor. 1 = no throttling.'),
       token: z.string().optional(),
     },
-    async ({ color_scheme, viewport, user_agent, network_conditions, cpu_throttling_rate, token }) => {
+    tool(async ({ color_scheme, viewport, user_agent, network_conditions, cpu_throttling_rate, token }) => {
       checkAuth(token);
       const client = await ctx.page.createCDPSession();
       const applied = [];
@@ -62,22 +56,21 @@ export function registerEmulation(server, ctx) {
       }
 
       return { content: [{ type: 'text', text: `Applied: ${applied.join(', ') || 'nothing'}` }] };
-    }
+    })
   );
 
-  // resize_page — resize the browser window
   server.tool(
     'resize_page',
     'Resize the browser window to the specified dimensions',
     {
-      width: z.number().int().describe('Page width in pixels'),
-      height: z.number().int().describe('Page height in pixels'),
+      width: z.number().int(),
+      height: z.number().int(),
       token: z.string().optional(),
     },
-    async ({ width, height, token }) => {
+    tool(async ({ width, height, token }) => {
       checkAuth(token);
       await ctx.page.setViewport({ width, height });
       return { content: [{ type: 'text', text: `Resized to ${width}x${height}` }] };
-    }
+    })
   );
 }

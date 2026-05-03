@@ -1,9 +1,8 @@
 import { z } from 'zod';
-import { checkAuth } from '../auth.js';
+import { checkAuth, tool } from '../auth.js';
 
 export function registerNavigate(server, ctx) {
 
-  // navigate_page — go to URL, back, forward, or reload
   server.tool(
     'navigate_page',
     'Go to a URL, or navigate back, forward, or reload the current page',
@@ -14,7 +13,7 @@ export function registerNavigate(server, ctx) {
       timeout: z.number().int().optional().describe('Max wait time in ms (0 = default)'),
       token: z.string().optional(),
     },
-    async ({ type, url, ignore_cache, timeout, token }) => {
+    tool(async ({ type, url, ignore_cache, timeout, token }) => {
       checkAuth(token);
       const opts = { waitUntil: 'networkidle2', timeout: timeout || 30_000 };
       if (type === 'url') {
@@ -29,10 +28,9 @@ export function registerNavigate(server, ctx) {
       }
       const title = await ctx.page.title();
       return { content: [{ type: 'text', text: `Page: ${ctx.page.url()}\nTitle: ${title}` }] };
-    }
+    })
   );
 
-  // new_page — open a new tab
   server.tool(
     'new_page',
     'Open a new tab and navigate to a URL',
@@ -42,33 +40,32 @@ export function registerNavigate(server, ctx) {
         .describe('Open in background without switching to it'),
       token: z.string().optional(),
     },
-    async ({ url, background, token }) => {
+    tool(async ({ url, background, token }) => {
       checkAuth(token);
-      const newPage = await ctx.browser.newPage();
+      const newPage = await ctx.newPage(); // uses ctx.newPage() which runs all hooks
       await newPage.goto(url, { waitUntil: 'networkidle2' });
       if (!background) ctx.setPage(newPage);
       const pages = await ctx.browser.pages();
       return { content: [{ type: 'text', text: `Opened tab ${pages.indexOf(newPage)}: ${url}` }] };
-    }
+    })
   );
 
-  // list_pages — list all open tabs
   server.tool(
     'list_pages',
     'Get a list of all open tabs in the browser',
     { token: z.string().optional() },
-    async ({ token }) => {
+    tool(async ({ token }) => {
       checkAuth(token);
       const pages = await ctx.browser.pages();
       const list = await Promise.all(pages.map(async (p, i) => {
         const title = await p.title().catch(() => '');
-        return `[${i}] ${p.url()} — ${title}`;
+        const active = p === ctx.page ? ' ◀ active' : '';
+        return `[${i}] ${p.url()} — ${title}${active}`;
       }));
       return { content: [{ type: 'text', text: list.join('\n') }] };
-    }
+    })
   );
 
-  // select_page — switch active tab
   server.tool(
     'select_page',
     'Switch to a tab by its index (from list_pages)',
@@ -77,7 +74,7 @@ export function registerNavigate(server, ctx) {
       bring_to_front: z.boolean().optional().default(true),
       token: z.string().optional(),
     },
-    async ({ page_id, bring_to_front, token }) => {
+    tool(async ({ page_id, bring_to_front, token }) => {
       checkAuth(token);
       const pages = await ctx.browser.pages();
       if (page_id < 0 || page_id >= pages.length)
@@ -85,10 +82,9 @@ export function registerNavigate(server, ctx) {
       ctx.setPage(pages[page_id]);
       if (bring_to_front) await ctx.page.bringToFront();
       return { content: [{ type: 'text', text: `Switched to tab ${page_id}: ${ctx.page.url()}` }] };
-    }
+    })
   );
 
-  // close_page — close a tab
   server.tool(
     'close_page',
     'Close a tab by its index. The last open tab cannot be closed.',
@@ -96,30 +92,29 @@ export function registerNavigate(server, ctx) {
       page_id: z.number().int().describe('Tab index from list_pages'),
       token: z.string().optional(),
     },
-    async ({ page_id, token }) => {
+    tool(async ({ page_id, token }) => {
       checkAuth(token);
       const pages = await ctx.browser.pages();
       if (pages.length <= 1) throw new Error('Cannot close the last open tab');
       if (page_id < 0 || page_id >= pages.length)
         throw new Error(`Invalid page_id ${page_id}`);
       await pages[page_id].close();
-      // if we closed the active page, switch to tab 0
       const remaining = await ctx.browser.pages();
       if (!remaining.includes(ctx.page)) ctx.setPage(remaining[0]);
       return { content: [{ type: 'text', text: `Closed tab ${page_id}` }] };
-    }
+    })
   );
 
-  // wait_for — wait for text to appear on page
   server.tool(
     'wait_for',
     'Wait for specified text to appear on the current page',
     {
-      text: z.array(z.string()).min(1).describe('Resolves when any of these strings appears on the page'),
+      text: z.array(z.string()).min(1)
+        .describe('Resolves when any of these strings appears on the page'),
       timeout: z.number().int().optional().default(30_000),
       token: z.string().optional(),
     },
-    async ({ text, timeout, token }) => {
+    tool(async ({ text, timeout, token }) => {
       checkAuth(token);
       await Promise.race(
         text.map(t => ctx.page.waitForFunction(
@@ -128,7 +123,23 @@ export function registerNavigate(server, ctx) {
           t
         ))
       );
-      return { content: [{ type: 'text', text: `Text found on page` }] };
-    }
+      return { content: [{ type: 'text', text: 'Text found on page' }] };
+    })
+  );
+
+  // #7 — wait_for_selector
+  server.tool(
+    'wait_for_selector',
+    'Wait for an element matching a CSS selector to appear on the page',
+    {
+      selector: z.string().describe('CSS selector to wait for'),
+      timeout: z.number().int().optional().default(30_000),
+      token: z.string().optional(),
+    },
+    tool(async ({ selector, timeout, token }) => {
+      checkAuth(token);
+      await ctx.page.waitForSelector(selector, { timeout });
+      return { content: [{ type: 'text', text: `Selector found: ${selector}` }] };
+    })
   );
 }

@@ -1,18 +1,18 @@
 import { z } from 'zod';
-import { checkAuth } from '../auth.js';
+import { checkAuth, tool } from '../auth.js';
 import fs from 'fs';
 
 export function registerMemory(server, ctx) {
 
-  // take_memory_snapshot — heap snapshot via CDP
   server.tool(
     'take_memory_snapshot',
-    'Capture a JavaScript heap snapshot of the current page to analyze memory usage',
+    'Capture a JavaScript heap snapshot to analyze memory usage and debug leaks',
     {
-      file_path: z.string().describe('Path to save the .heapsnapshot file, e.g. /data/heap.heapsnapshot'),
+      file_path: z.string().default('/data/heap.heapsnapshot')
+        .describe('Path to save the .heapsnapshot file'),
       token: z.string().optional(),
     },
-    async ({ file_path, token }) => {
+    tool(async ({ file_path, token }) => {
       checkAuth(token);
       const client = await ctx.page.createCDPSession();
       const chunks = [];
@@ -20,8 +20,7 @@ export function registerMemory(server, ctx) {
       await new Promise((resolve, reject) => {
         client.on('HeapProfiler.addHeapSnapshotChunk', ({ chunk }) => chunks.push(chunk));
         client.send('HeapProfiler.takeHeapSnapshot', { reportProgress: false })
-          .then(resolve)
-          .catch(reject);
+          .then(resolve).catch(reject);
       });
 
       const snapshot = chunks.join('');
@@ -29,6 +28,6 @@ export function registerMemory(server, ctx) {
 
       const sizeMB = (Buffer.byteLength(snapshot) / 1024 / 1024).toFixed(2);
       return { content: [{ type: 'text', text: `Heap snapshot saved to: ${file_path} (${sizeMB} MB)` }] };
-    }
+    })
   );
 }
