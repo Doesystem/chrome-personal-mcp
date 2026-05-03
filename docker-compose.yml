@@ -1,13 +1,11 @@
-version: '3.8'
-
 services:
   agent:
     build: .
-    container_name: ai-agent
+    container_name: chrome-personal-mcp
     environment:
-      - MODE=debug   # เปลี่ยนเป็น debug ได้
+      - MODE=prod    # เปลี่ยนเป็น debug เพื่อเปิด VNC
     volumes:
       - ./data:/data
     ports:
-      - "5900:5900"   # VNC (ใช้เฉพาะ debug)
+      - "5900:5900"  # VNC — ใช้เฉพาะ MODE=debug
     shm_size: '1gb'
