@@ -3,9 +3,9 @@ services:
     build: .
     container_name: chrome-personal-mcp
     environment:
-      - MODE=prod    # เปลี่ยนเป็น debug เพื่อเปิด VNC
+      - MODE=prod    # set to debug to enable VNC
     volumes:
       - ./data:/data
     ports:
-      - "5900:5900"  # VNC — ใช้เฉพาะ MODE=debug
+      - "5900:5900"  # VNC — only used when MODE=debug
     shm_size: '1gb'

@@ -21,7 +21,7 @@ const isDebug = process.env.MODE === 'debug';
 
   await page.goto('https://www.lifetimesoft.com/', { waitUntil: 'networkidle2' });
 
-  // log console (สำคัญเวลาเป็น agent)
+  // forward page console logs to stdout
   page.on('console', msg => console.log('PAGE LOG:', msg.text()));
 
   if (isDebug) {
