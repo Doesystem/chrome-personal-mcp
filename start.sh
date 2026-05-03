@@ -1,16 +1,16 @@
 #!/bin/bash
 set -e
 
-# Ensure /data is writable by current user (host volume may override Dockerfile chown)
+# Fix /data ownership — host volume may be owned by root.
+# This runs as root, then drops to "node" user before launching the app.
 mkdir -p /data/chrome-profile
-chmod 700 /data/chrome-profile 2>/dev/null || true
+chown -R node:node /data
 
 if [ "$MODE" = "debug" ]; then
   echo "Starting DEBUG mode (Xvfb + VNC + noVNC)..."
 
   # Virtual display
   Xvfb :99 -screen 0 1280x800x24 &
-  XVFB_PID=$!
   export DISPLAY=:99
 
   # Wait for Xvfb to be ready
@@ -34,7 +34,6 @@ if [ "$MODE" = "debug" ]; then
       -listen 127.0.0.1 -rfbport 5900 -xkb -bg -o /tmp/x11vnc.log
   fi
 
-  # Wait for x11vnc to be ready
   sleep 2
 
   # noVNC — websockify bridges WebSocket (6080) → VNC TCP (5900)
@@ -42,10 +41,10 @@ if [ "$MODE" = "debug" ]; then
   websockify --web "$NOVNC_DIR" 0.0.0.0:6080 127.0.0.1:5900 &
 
   echo "noVNC ready at http://localhost:6080/vnc.html"
-  [ -n "$NOVNC_PASSWORD" ] && echo "noVNC password: $NOVNC_PASSWORD"
 
-  node app.js
+  # Drop to non-root user before running the app
+  exec gosu node node app.js
 else
   echo "Starting PROD mode (headless)..."
-  node app.js
+  exec gosu node node app.js
 fi

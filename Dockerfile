@@ -36,9 +36,13 @@ COPY . .
 RUN mkdir -p /data && chown -R node:node /data /app
 
 # ---------- Entrypoint ----------
+# Run as root so start.sh can fix /data permissions,
+# then drop to "node" user before launching the app.
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
-USER node
+# Do NOT set USER here — start.sh handles the privilege drop via gosu
+RUN apt-get update && apt-get install -y gosu --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
 CMD ["/start.sh"]
