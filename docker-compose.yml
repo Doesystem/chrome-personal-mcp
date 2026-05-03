@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  agent:
+    build: .
+    container_name: ai-agent
+    environment:
+      - MODE=debug   # เปลี่ยนเป็น debug ได้
+    volumes:
+      - ./data:/data
+    ports:
+      - "5900:5900"   # VNC (ใช้เฉพาะ debug)
+    shm_size: '1gb'
